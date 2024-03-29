@@ -86,12 +86,22 @@ void writeFile (const char* outputFileName, int *hFinalPng, int frameSizeX, int 
 }
 
 __global__ 
-void processTransformations() {
+void processTransformations(int *dCsr, int *dOffset, bool *dUpdate, int *dCumTransUp, int *dCumTransRight, int *dActualTransUp, int *dActualTransRight, int V, int E) {
 	//process the transformations, returning an array telling you exactly how much each mesh should be eventually moved
 
-	//have a global up down left right counter for each mesh
-	//atomicAdd to them
-	//
+	int vertex = blockIdx.x * 1024 + threadIdx.x;
+	
+	if(vertex < V) {
+		while(vertex > 0 && dUpdate[vertex] == false);
+		int start = dOffset[vertex];
+		int end = dOffset[vertex+1];
+		for(int i = start; i < end; i++) {
+			int neighbour = dCsr[i];
+			dActualTransUp[neighbour] += dCumTransUp[vertex];
+			dActualTransRight[neighbour] += dCumTransRight[vertex];
+			dUpdate[neighbour] = true;
+		}
+	} 
 }
 
 __global__
@@ -137,6 +147,40 @@ int main (int argc, char **argv) {
 
 	// Code begins here.
 	// Do not change anything above this comment.
+	int *cumTransUp = (int*) malloc (sizeof (int) * V) ;
+	int *cumTransRight = (int*) malloc (sizeof (int) * V) ;
+	memset (cumTransUp, 0, sizeof (int) * V) ;
+	memset (cumTransRight, 0, sizeof (int) * V) ;
+	for(auto &x: translations){
+		if(x[1] == 0)
+		cumTransUp[x[0]] += x[2];
+		else if (x[1] == 1)
+		cumTransUp -= x[2];
+		else if (x[1] == 2)
+		cumTransRight[x[0]] -= x[2];
+		else
+		cumTransRight[x[0]] += x[2];
+	}
+	int *dCumTransUp, *dCumTransRight, *dActualTransUp, *dActualTransRight, *dOffset, *dCsr;
+	bool *dUpdate;
+	cudaMalloc(&dCumTransUp, sizeof(int) * V);
+	cudaMalloc(&dCumTransRight, sizeof(int) * V);
+	cudaMalloc(&dActualTransUp, sizeof(int) * V);
+	cudaMalloc(&dActualTransRight, sizeof(int) * V);
+	cudaMalloc(&dUpdate, sizeof(bool) * V);
+	cudaMalloc(&dOffset, sizeof(int) * V);
+	cudaMalloc(&dCsr, sizeof(int) * E);
+	cudaMemcpy(dCumTransUp, cumTransUp, sizeof(int) * V, cudaMemcpyHostToDevice);
+	cudaMemcpy(dCumTransRight, cumTransRight, sizeof(int) * V, cudaMemcpyHostToDevice);
+	cudaMemcpy(dOffset, hOffset, sizeof(int) * V, cudaMemcpyHostToDevice);
+	cudaMemcpy(dCsr, hCsr, sizeof(int) * E, cudaMemcpyHostToDevice);
+
+	processTransformations<<<(V+1023)/1024, min(1024, V)>>>(dCsr, dOffset, dCumTransUp, dCumTransRight, dActualTransUp, dActualTransRight, V, E);
+
+	cudaFree(dCumTransUp);
+	cudaFree(dCumTransRight);
+	//now that we have the actual translations, we can move the meshes
+
 
 
 	// Do not change anything below this comment.
