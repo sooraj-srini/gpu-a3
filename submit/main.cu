@@ -88,22 +88,23 @@ void writeFile (const char* outputFileName, int *hFinalPng, int frameSizeX, int 
 __global__ 
 void processTransformations(int *dCsr, int *dOffset, bool *dUpdate, int *dCumTransUp, int *dCumTransRight, int *dActualTransUp, int *dActualTransRight, int V, int E) {
 	//process the transformations, returning an array telling you exactly how much each mesh should be eventually moved
-
+	dUpdate[0] = true;
 	int vertex = blockIdx.x * 1024 + threadIdx.x;
 	
 	if(vertex < V) {
-		while(true) {
+		bool done = false;
+		while(done == false) {
 			//we need to avoid the warp issue so we have this convoluted way of doing the check
-			if(vertex == 0 || dUpdate[vertex])  {
-				int start = dOffset[vertex];
-				int end = dOffset[vertex+1];
+			int start = dOffset[vertex];
+			int end = dOffset[vertex+1];
+			if(dUpdate[vertex])  {
 				for(int i = start; i < end; i++) {
 					int neighbour = dCsr[i];
 					dActualTransUp[neighbour] += dCumTransUp[vertex];
 					dActualTransRight[neighbour] += dCumTransRight[vertex];
 					dUpdate[neighbour] = true;
+					done = true;
 				}
-				break;
 			}
 		}
 	} 
@@ -184,9 +185,10 @@ int main (int argc, char **argv) {
 
 	cudaFree(dCumTransUp);
 	cudaFree(dCumTransRight);
+	cudaFree(dUpdate);
 	//now that we have the actual translations, we can move the meshes
 
-
+	moveMesh<<<dim3(V, 100, 1), dim3(100, 1, 1)>>>(dCsr, dOffset, )
 
 	// Do not change anything below this comment.
 	// Code ends here.
