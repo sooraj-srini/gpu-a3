@@ -85,6 +85,20 @@ void writeFile (const char* outputFileName, int *hFinalPng, int frameSizeX, int 
 	}
 }
 
+__global__ 
+void processTransformations() {
+	//process the transformations, returning an array telling you exactly how much each mesh should be eventually moved
+
+	//have a global up down left right counter for each mesh
+	//atomicAdd to them
+	//
+}
+
+__global__
+void moveMesh(){
+	//moves the mesh some many places, considering the opacity of the individual elements as well
+}
+
 
 int main (int argc, char **argv) {
 	
