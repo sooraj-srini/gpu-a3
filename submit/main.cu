@@ -92,14 +92,19 @@ void processTransformations(int *dCsr, int *dOffset, bool *dUpdate, int *dCumTra
 	int vertex = blockIdx.x * 1024 + threadIdx.x;
 	
 	if(vertex < V) {
-		while(vertex > 0 && dUpdate[vertex] == false);
-		int start = dOffset[vertex];
-		int end = dOffset[vertex+1];
-		for(int i = start; i < end; i++) {
-			int neighbour = dCsr[i];
-			dActualTransUp[neighbour] += dCumTransUp[vertex];
-			dActualTransRight[neighbour] += dCumTransRight[vertex];
-			dUpdate[neighbour] = true;
+		while(true) {
+			//we need to avoid the warp issue so we have this convoluted way of doing the check
+			if(vertex == 0 || dUpdate[vertex])  {
+				int start = dOffset[vertex];
+				int end = dOffset[vertex+1];
+				for(int i = start; i < end; i++) {
+					int neighbour = dCsr[i];
+					dActualTransUp[neighbour] += dCumTransUp[vertex];
+					dActualTransRight[neighbour] += dCumTransRight[vertex];
+					dUpdate[neighbour] = true;
+				}
+				break;
+			}
 		}
 	} 
 }
@@ -175,7 +180,7 @@ int main (int argc, char **argv) {
 	cudaMemcpy(dOffset, hOffset, sizeof(int) * V, cudaMemcpyHostToDevice);
 	cudaMemcpy(dCsr, hCsr, sizeof(int) * E, cudaMemcpyHostToDevice);
 
-	processTransformations<<<(V+1023)/1024, min(1024, V)>>>(dCsr, dOffset, dCumTransUp, dCumTransRight, dActualTransUp, dActualTransRight, V, E);
+	processTransformations<<<(V+1023)/1024, min(1024, V)>>>(dCsr, dOffset, dUpdate, dCumTransUp, dCumTransRight, dActualTransUp, dActualTransRight, V, E);
 
 	cudaFree(dCumTransUp);
 	cudaFree(dCumTransRight);
