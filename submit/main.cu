@@ -221,10 +221,17 @@ int main (int argc, char **argv) {
 	
 	int *dOpacity, *dGlobalCoordinatesX, *dGlobalCoordinatesY, *dFrameSizeX, *dFrameSizeY, *dFinalPng, *dOnTop, **dMesh;
 	
+	cudaMalloc(&dMesh, sizeof(int*) * V);
+	int localMesh[V];
+
 	for(int i = 0; i < V; i++) {
-		cudaMalloc(&dMesh[i], sizeof(int) * hFrameSizeX[i] * hFrameSizeY[i]);
-		cudaMemcpy(dMesh[i], hMesh[i], sizeof(int) * hFrameSizeX[i] * hFrameSizeY[i], cudaMemcpyHostToDevice);
+		int *arr;
+		cudaMalloc(&arr, sizeof(int) * hFrameSizeX[i] * hFrameSizeY[i]);
+		cudaMemcpy(arr, hMesh[i], sizeof(int) * hFrameSizeX[i] * hFrameSizeY[i], cudaMemcpyHostToDevice);
+		localMesh[i] = arr;
 	}
+	cudaMemcpy(dMesh, localMesh, sizeof(int*) * V, cudaMemcpyHostToDevice);
+
 	cudaMalloc(&dOpacity, sizeof(int) * V);
 	cudaMalloc(&dGlobalCoordinatesX, sizeof(int) * V);
 	cudaMalloc(&dGlobalCoordinatesY, sizeof(int) * V);
