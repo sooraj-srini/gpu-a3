@@ -126,18 +126,21 @@ void moveMesh(int **dMesh, int *dActualTransUp, int *dActualTransRight, int *dOp
 		if (updatedX >= 0 && updatedX < frameSizeX && updatedY >= 0 && updatedY < frameSizeY) {
 			int index = updatedX * frameSizeY + updatedY;
 			int op = dOpacity[vertex];
+			bool done = false, updated = false;
 			do {
+				done = updated;
 				int old = dOnTop[index];
-				if (old > 0 && old < op) {
+				if (old == 0 || (old > 0 && old < op)) {
 					int ret = atomicCAS(&dOnTop[index], old, -op);
-					if(ret == op) {
+					if(ret == old) {
 						dFinalPng[index] = dMesh[vertex][r * dFrameSizeY[vertex] + c];
-						atomicExch(&dOnTop[index], op);
+						dOnTop[index] = op;
+						updated = true;
 					}
 				} else if (old >= op) {
-					break;
+					updated = true;
 				}
-			} while(true);
+			} while(done == false);
 		}
 	}
 }
@@ -222,7 +225,7 @@ int main (int argc, char **argv) {
 	int *dOpacity, *dGlobalCoordinatesX, *dGlobalCoordinatesY, *dFrameSizeX, *dFrameSizeY, *dFinalPng, *dOnTop, **dMesh;
 	
 	cudaMalloc(&dMesh, sizeof(int*) * V);
-	int localMesh[V];
+	int* localMesh[V];
 
 	for(int i = 0; i < V; i++) {
 		int *arr;
