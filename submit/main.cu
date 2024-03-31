@@ -92,21 +92,22 @@ void processTransformations(int *dCsr, int *dOffset, bool *dUpdate, int *dCumTra
 	int vertex = blockIdx.x * 1024 + threadIdx.x;
 	
 	if(vertex < V) {
-		bool done = false;
-		while(done == false) {
+		bool done = false, updated = false;
+		do {
 			//we need to avoid the warp issue so we have this convoluted way of doing the check
-			int start = dOffset[vertex];
-			int end = dOffset[vertex+1];
+			done = updated;
 			if(dUpdate[vertex])  {
+				int start = dOffset[vertex];
+				int end = dOffset[vertex+1];
 				for(int i = start; i < end; i++) {
 					int neighbour = dCsr[i];
 					dActualTransUp[neighbour] += dCumTransUp[vertex];
 					dActualTransRight[neighbour] += dCumTransRight[vertex];
 					dUpdate[neighbour] = true;
 				}
-				done = true;
+				updated = true;
 			}
-		}
+		} while(done == false);
 	} 
 }
 
@@ -124,13 +125,21 @@ void moveMesh(int **dMesh, int *dActualTransUp, int *dActualTransRight, int *dOp
 
 		if (updatedX >= 0 && updatedX < frameSizeX && updatedY >= 0 && updatedY < frameSizeY) {
 			int index = updatedX * frameSizeY + updatedY;
-			if(dOpacity[vertex] > dOnTop[index]) {
-				dFinalPng[index] = dMesh[vertex + r][r * dFrameSizeY[vertex + r] + c];
-				dOnTop[index] = dOpacity[vertex + r];
-			}
+			int op = dOpacity[vertex];
+			do {
+				int old = dOnTop[index];
+				if (old > 0 && old < op) {
+					int ret = atomicCAS(&dOnTop[index], old, -op);
+					if(ret == op) {
+						dFinalPng[index] = dMesh[vertex][r * dFrameSizeY[vertex] + c];
+						atomicExch(&dOnTop[index], op);
+					}
+				} else if (old >= op) {
+					break;
+				}
+			} while(true);
 		}
 	}
-
 }
 
 
