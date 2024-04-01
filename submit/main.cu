@@ -96,7 +96,7 @@ void processTransformations(int *dCsr, int *dOffset, bool *dUpdate, int *dCumTra
 		do {
 			//we need to avoid the warp issue so we have this convoluted way of doing the check
 			done = updated;
-			if(dUpdate[vertex])  {
+			if(!done && dUpdate[vertex])  {
 				int start = dOffset[vertex];
 				int end = dOffset[vertex+1];
 				for(int i = start; i < end; i++) {
@@ -107,7 +107,7 @@ void processTransformations(int *dCsr, int *dOffset, bool *dUpdate, int *dCumTra
 				}
 				updated = true;
 			}
-		} while(done == false);
+		} while(!done);
 	} 
 }
 
@@ -140,7 +140,7 @@ void moveMesh(int **dMesh, int *dActualTransUp, int *dActualTransRight, int *dOp
 				} else if (old >= op) {
 					updated = true;
 				}
-			} while(done == false);
+			} while(!done);
 		}
 	}
 }
@@ -202,11 +202,11 @@ int main (int argc, char **argv) {
 	cudaMalloc(&dCumTransUp, sizeof(int) * V);
 	cudaMalloc(&dCumTransRight, sizeof(int) * V);
 	cudaMalloc(&dUpdate, sizeof(bool) * V);
-	cudaMalloc(&dOffset, sizeof(int) * V);
+	cudaMalloc(&dOffset, sizeof(int) * (V+1));
 	cudaMalloc(&dCsr, sizeof(int) * E);
 	cudaMemcpy(dCumTransUp, cumTransUp, sizeof(int) * V, cudaMemcpyHostToDevice);
 	cudaMemcpy(dCumTransRight, cumTransRight, sizeof(int) * V, cudaMemcpyHostToDevice);
-	cudaMemcpy(dOffset, hOffset, sizeof(int) * V, cudaMemcpyHostToDevice);
+	cudaMemcpy(dOffset, hOffset, sizeof(int) * (V+1), cudaMemcpyHostToDevice);
 	cudaMemcpy(dCsr, hCsr, sizeof(int) * E, cudaMemcpyHostToDevice);
 
 	processTransformations<<<(V+1023)/1024, min(1024, V)>>>(dCsr, dOffset, dUpdate, dCumTransUp, dCumTransRight, V, E);
