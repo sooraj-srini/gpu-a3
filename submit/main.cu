@@ -112,7 +112,7 @@ void processTransformations(int *dCsr, int *dOffset, bool *dUpdate, int *dCumTra
 }
 
 __global__
-void moveMesh(int **dMesh, int *dActualTransUp, int *dActualTransRight, int *dOpacity, int *dGlobalCoordinatesX, int *dGlobalCoordinatesY, int *dFrameSizeX, int *dFrameSizeY, int *dFinalPng, int *dOnTop, int V, int frameSizeX, int frameSizeY){
+void moveMesh(int *dMesh, int *dActualTransUp, int *dActualTransRight, int *dOpacity, int *dGlobalCoordinatesX, int *dGlobalCoordinatesY, int *dFrameSizeX, int *dFrameSizeY, int *dFinalPng, int *dOnTop, int V, int frameSizeX, int frameSizeY, int maxcount){
 	//moves the mesh some many places, considering the opacity of the individual elements as well
 
 	int vertex = blockIdx.x;
@@ -133,7 +133,7 @@ void moveMesh(int **dMesh, int *dActualTransUp, int *dActualTransRight, int *dOp
 				bool val =!(old >= 0 && old < op);
 				int ret = atomicCAS(&dOnTop[index], old - INT_MAX*val, -1);
 				if(ret == old - INT_MAX*val) {
-					dFinalPng[index] = dMesh[vertex][r * dFrameSizeY[vertex] + c];
+					dFinalPng[index] = dMesh[vertex * maxcount + r * dFrameSizeY[vertex] + c];
 					dOnTop[index] = op;
 					updated = true;
 				} 
@@ -215,18 +215,14 @@ int main (int argc, char **argv) {
 	//now that we have the actual translations, we can move the meshes
 	
 	
-	int *dOpacity, *dGlobalCoordinatesX, *dGlobalCoordinatesY, *dFrameSizeX, *dFrameSizeY, *dFinalPng, *dOnTop, **dMesh;
-	
-	cudaMalloc(&dMesh, sizeof(int*) * V);
-	int* localMesh[V];
+	int *dOpacity, *dGlobalCoordinatesX, *dGlobalCoordinatesY, *dFrameSizeX, *dFrameSizeY, *dFinalPng, *dOnTop, *dMesh;
+	int maxcount = 100*100;
+	// for (int i=0; i<V; i++) maxcount = max(maxcount,  hFrameSizeX[i] * hFrameSizeY[i]);
+	cudaMalloc(&dMesh, sizeof(int) * maxcount*V);
 
 	for(int i = 0; i < V; i++) {
-		int *arr;
-		cudaMalloc(&arr, sizeof(int) * hFrameSizeX[i] * hFrameSizeY[i]);
-		cudaMemcpy(arr, hMesh[i], sizeof(int) * hFrameSizeX[i] * hFrameSizeY[i], cudaMemcpyHostToDevice);
-		localMesh[i] = arr;
+		cudaMemcpy(dMesh + i*maxcount, hMesh[i], sizeof(int) * hFrameSizeX[i] * hFrameSizeY[i], cudaMemcpyHostToDevice);
 	}
-	cudaMemcpy(dMesh, localMesh, sizeof(int*) * V, cudaMemcpyHostToDevice);
 
 	cudaMalloc(&dOpacity, sizeof(int) * V);
 	cudaMalloc(&dGlobalCoordinatesX, sizeof(int) * V);
@@ -241,7 +237,7 @@ int main (int argc, char **argv) {
 	cudaMemcpy(dFrameSizeX, hFrameSizeX, sizeof(int) * V, cudaMemcpyHostToDevice);
 	cudaMemcpy(dFrameSizeY, hFrameSizeY, sizeof(int) * V, cudaMemcpyHostToDevice);
 
-	moveMesh<<<dim3(V, 100, 1), dim3(100, 1, 1)>>>(dMesh, dCumTransUp, dCumTransRight, dOpacity, dGlobalCoordinatesX, dGlobalCoordinatesY, dFrameSizeX, dFrameSizeY, dFinalPng, dOnTop, V, frameSizeX, frameSizeY);
+	moveMesh<<<dim3(V, 100, 1), dim3(100, 1, 1)>>>(dMesh, dCumTransUp, dCumTransRight, dOpacity, dGlobalCoordinatesX, dGlobalCoordinatesY, dFrameSizeX, dFrameSizeY, dFinalPng, dOnTop, V, frameSizeX, frameSizeY, maxcount);
 	cudaMemcpy(hFinalPng, dFinalPng, sizeof(int) * frameSizeX * frameSizeY, cudaMemcpyDeviceToHost);
 	// Do not change anything below this comment.
 	// Code ends here.
