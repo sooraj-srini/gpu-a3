@@ -122,7 +122,7 @@ void moveMesh(int **dMesh, int *dActualTransUp, int *dActualTransRight, int *dOp
 	if(vertex < V && r < dFrameSizeX[vertex] && c < dFrameSizeY[vertex]) {
 		int updatedX = dGlobalCoordinatesX[vertex] + r + dActualTransUp[vertex];
 		int updatedY = dGlobalCoordinatesY[vertex] + c + dActualTransRight[vertex];
-
+		
 		if (updatedX >= 0 && updatedX < frameSizeX && updatedY >= 0 && updatedY < frameSizeY) {
 			int index = updatedX * frameSizeY + updatedY;
 			int op = dOpacity[vertex];
@@ -130,16 +130,14 @@ void moveMesh(int **dMesh, int *dActualTransUp, int *dActualTransRight, int *dOp
 			do {
 				done = updated;
 				int old = dOnTop[index];
-				if (old >= 0 && old < op) {
-					int ret = atomicCAS(&dOnTop[index], old, -1);
-					if(ret == old) {
-						dFinalPng[index] = dMesh[vertex][r * dFrameSizeY[vertex] + c];
-						dOnTop[index] = op;
-						updated = true;
-					}
-				} else if (old >= op) {
+				bool val =!(old >= 0 && old < op);
+				int ret = atomicCAS(&dOnTop[index], old - INT_MAX*val, -1);
+				if(ret == old - INT_MAX*val) {
+					dFinalPng[index] = dMesh[vertex][r * dFrameSizeY[vertex] + c];
+					dOnTop[index] = op;
 					updated = true;
-				}
+				} 
+				updated = updated | (old >= op);
 			} while(!done);
 		}
 	}
