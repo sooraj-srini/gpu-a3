@@ -130,9 +130,9 @@ void moveMesh(int **dMesh, int *dActualTransUp, int *dActualTransRight, int *dOp
 			do {
 				done = updated;
 				int old = dOnTop[index];
-				if (old == 0 || (old > 0 && old < op)) {
+				if (old >= 0 && old < op) {
 					int ret = atomicCAS(&dOnTop[index], old, -op);
-					if(ret == old) {
+					if(ret == old && dOnTop[index] == -op) {
 						dFinalPng[index] = dMesh[vertex][r * dFrameSizeY[vertex] + c];
 						dOnTop[index] = op;
 						updated = true;
