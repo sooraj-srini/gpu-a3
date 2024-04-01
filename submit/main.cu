@@ -86,7 +86,7 @@ void writeFile (const char* outputFileName, int *hFinalPng, int frameSizeX, int 
 }
 
 __global__ 
-void processTransformations(int *dCsr, int *dOffset, bool *dUpdate, int *dCumTransUp, int *dCumTransRight, int *dActualTransUp, int *dActualTransRight, int V, int E) {
+void processTransformations(int *dCsr, int *dOffset, bool *dUpdate, int *dCumTransUp, int *dCumTransRight, int V, int E) {
 	//process the transformations, returning an array telling you exactly how much each mesh should be eventually moved
 	dUpdate[0] = true;
 	int vertex = blockIdx.x * 1024 + threadIdx.x;
@@ -101,8 +101,8 @@ void processTransformations(int *dCsr, int *dOffset, bool *dUpdate, int *dCumTra
 				int end = dOffset[vertex+1];
 				for(int i = start; i < end; i++) {
 					int neighbour = dCsr[i];
-					dActualTransUp[neighbour] += dCumTransUp[vertex];
-					dActualTransRight[neighbour] += dCumTransRight[vertex];
+					dCumTransUp[neighbour] += dCumTransUp[vertex];
+					dCumTransRight[neighbour] += dCumTransRight[vertex];
 					dUpdate[neighbour] = true;
 				}
 				updated = true;
@@ -191,28 +191,23 @@ int main (int argc, char **argv) {
 		if(x[1] == 0)
 		cumTransUp[x[0]] -= x[2];
 		else if (x[1] == 1)
-		cumTransUp += x[2];
+		cumTransUp[x[0]] += x[2];
 		else if (x[1] == 2)
 		cumTransRight[x[0]] -= x[2];
 		else
 		cumTransRight[x[0]] += x[2];
 	}
-	int *dCumTransUp, *dCumTransRight, *dActualTransUp, *dActualTransRight, *dOffset, *dCsr;
+	int *dCumTransUp, *dCumTransRight, *dOffset, *dCsr;
 	bool *dUpdate;
 	cudaMalloc(&dCumTransUp, sizeof(int) * V);
 	cudaMalloc(&dCumTransRight, sizeof(int) * V);
-	cudaMalloc(&dActualTransUp, sizeof(int) * V);
-	cudaMalloc(&dActualTransRight, sizeof(int) * V);
 	cudaMalloc(&dUpdate, sizeof(bool) * V);
 	cudaMalloc(&dOffset, sizeof(int) * V);
 	cudaMalloc(&dCsr, sizeof(int) * E);
-	cudaMemcpy(dCumTransUp, cumTransUp, sizeof(int) * V, cudaMemcpyHostToDevice);
-	cudaMemcpy(dCumTransRight, cumTransRight, sizeof(int) * V, cudaMemcpyHostToDevice);
 	cudaMemcpy(dOffset, hOffset, sizeof(int) * V, cudaMemcpyHostToDevice);
 	cudaMemcpy(dCsr, hCsr, sizeof(int) * E, cudaMemcpyHostToDevice);
 
-	
-	processTransformations<<<(V+1023)/1024, min(1024, V)>>>(dCsr, dOffset, dUpdate, dCumTransUp, dCumTransRight, dActualTransUp, dActualTransRight, V, E);
+	processTransformations<<<(V+1023)/1024, min(1024, V)>>>(dCsr, dOffset, dUpdate, dCumTransUp, dCumTransRight, V, E);
 	
 	cudaFree(dCumTransUp);
 	cudaFree(dCumTransRight);
@@ -248,7 +243,7 @@ int main (int argc, char **argv) {
 	cudaMemcpy(dFrameSizeX, hFrameSizeX, sizeof(int) * V, cudaMemcpyHostToDevice);
 	cudaMemcpy(dFrameSizeY, hFrameSizeY, sizeof(int) * V, cudaMemcpyHostToDevice);
 
-	moveMesh<<<dim3(V, 100, 1), dim3(100, 1, 1)>>>(dMesh, dActualTransUp, dActualTransRight, dOpacity, dGlobalCoordinatesX, dGlobalCoordinatesY, dFrameSizeX, dFrameSizeY, dFinalPng, dOnTop, V, frameSizeX, frameSizeY);
+	moveMesh<<<dim3(V, 100, 1), dim3(100, 1, 1)>>>(dMesh, dCumTransUp, dCumTransRight, dOpacity, dGlobalCoordinatesX, dGlobalCoordinatesY, dFrameSizeX, dFrameSizeY, dFinalPng, dOnTop, V, frameSizeX, frameSizeY);
 	cudaMemcpy(hFinalPng, dFinalPng, sizeof(int) * frameSizeX * frameSizeY, cudaMemcpyDeviceToHost);
 	// Do not change anything below this comment.
 	// Code ends here.
