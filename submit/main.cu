@@ -120,8 +120,8 @@ void moveMesh(int **dMesh, int *dActualTransUp, int *dActualTransRight, int *dOp
 	int c = threadIdx.x;
 
 	if(vertex < V && r < dFrameSizeX[vertex] && c < dFrameSizeY[vertex]) {
-		int updatedX = dGlobalCoordinatesX[vertex] + r + dActualTransRight[vertex];
-		int updatedY = dGlobalCoordinatesY[vertex] + c + dActualTransUp[vertex];
+		int updatedX = dGlobalCoordinatesX[vertex] + r + dActualTransUp[vertex];
+		int updatedY = dGlobalCoordinatesY[vertex] + c + dActualTransRight[vertex];
 
 		if (updatedX >= 0 && updatedX < frameSizeX && updatedY >= 0 && updatedY < frameSizeY) {
 			int index = updatedX * frameSizeY + updatedY;
