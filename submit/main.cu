@@ -119,7 +119,7 @@ void moveMesh(int **dMesh, int *dActualTransUp, int *dActualTransRight, int *dOp
 	int r = blockIdx.y;
 	int c = threadIdx.x;
 
-	if(vertex < V) {
+	if(vertex < V && r < dFrameSizeX[vertex] && c < dFrameSizeY[vertex]) {
 		int updatedX = dGlobalCoordinatesX[vertex] + r + dActualTransRight[vertex];
 		int updatedY = dGlobalCoordinatesY[vertex] + c + dActualTransUp[vertex];
 
@@ -131,8 +131,8 @@ void moveMesh(int **dMesh, int *dActualTransUp, int *dActualTransRight, int *dOp
 				done = updated;
 				int old = dOnTop[index];
 				if (old >= 0 && old < op) {
-					int ret = atomicCAS(&dOnTop[index], old, -op);
-					if(ret == old && dOnTop[index] == -op) {
+					int ret = atomicCAS(&dOnTop[index], old, -1);
+					if(ret == old) {
 						dFinalPng[index] = dMesh[vertex][r * dFrameSizeY[vertex] + c];
 						dOnTop[index] = op;
 						updated = true;
@@ -204,13 +204,13 @@ int main (int argc, char **argv) {
 	cudaMalloc(&dUpdate, sizeof(bool) * V);
 	cudaMalloc(&dOffset, sizeof(int) * V);
 	cudaMalloc(&dCsr, sizeof(int) * E);
+	cudaMemcpy(dCumTransUp, cumTransUp, sizeof(int) * V, cudaMemcpyHostToDevice);
+	cudaMemcpy(dCumTransRight, cumTransRight, sizeof(int) * V, cudaMemcpyHostToDevice);
 	cudaMemcpy(dOffset, hOffset, sizeof(int) * V, cudaMemcpyHostToDevice);
 	cudaMemcpy(dCsr, hCsr, sizeof(int) * E, cudaMemcpyHostToDevice);
 
 	processTransformations<<<(V+1023)/1024, min(1024, V)>>>(dCsr, dOffset, dUpdate, dCumTransUp, dCumTransRight, V, E);
 	
-	cudaFree(dCumTransUp);
-	cudaFree(dCumTransRight);
 	cudaFree(dUpdate);
 	cudaFree(dCsr);
 	cudaFree(dOffset);
