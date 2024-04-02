@@ -96,17 +96,15 @@ void processTransformations(int *dCsr, int *dOffset, bool *dUpdate, int *dCumTra
 		do {
 			//we need to avoid the warp issue so we have this convoluted way of doing the check
 			done = updated;
-			if(!done && dUpdate[vertex])  {
-				int start = dOffset[vertex];
-				int end = dOffset[vertex+1];
-				for(int i = start; i < end; i++) {
-					int neighbour = dCsr[i];
-					dCumTransUp[neighbour] += dCumTransUp[vertex];
-					dCumTransRight[neighbour] += dCumTransRight[vertex];
-					dUpdate[neighbour] = true;
-				}
-				updated = true;
+			int start = dOffset[vertex];
+			int end = dOffset[vertex+1];
+			for(int i = start; i < end*(!done)*dUpdate[vertex]; i++) {
+				int neighbour = dCsr[i];
+				dCumTransUp[neighbour] += dCumTransUp[vertex];
+				dCumTransRight[neighbour] += dCumTransRight[vertex];
+				dUpdate[neighbour] = true;
 			}
+			updated = dUpdate[vertex];
 		} while(!done);
 	} 
 }
