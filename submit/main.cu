@@ -110,7 +110,7 @@ __global__
 void process1(int *dCsr, int *dOffset, int *dWork, int *counter, int *dCumTrans, int V, int E) {
 	int index = blockIdx.x*1024 + threadIdx.x;
 	
-	if(index < V && dWork[index] > 0){
+	if(index < V && dWork[index] >= 0){
 		int vertex = dWork[index];
 		int start = dOffset[vertex];
 		int end = dOffset[vertex + 1];
