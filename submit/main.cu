@@ -244,7 +244,7 @@ int main (int argc, char **argv) {
 	int *dOpacity, *dGlobalCoordinatesX, *dGlobalCoordinatesY, *dFrameSizeX, *dFrameSizeY, *dFinalPng, *dOnTop, **dMesh;
 	
 	cudaMalloc(&dMesh, sizeof(int*) * V);
-	int* localMesh[V];
+	int **localMesh = (int **) malloc(sizeof(int*)*V);
 
 	for(int i = 0; i < V; i++) {
 		int *arr;
@@ -253,7 +253,8 @@ int main (int argc, char **argv) {
 		localMesh[i] = arr;
 	}
 	cudaMemcpy(dMesh, localMesh, sizeof(int*) * V, cudaMemcpyHostToDevice);
-
+	// printf("surely dmesh worked??\n");
+	// fflush(stdout);
 	cudaMalloc(&dOpacity, sizeof(int) * V);
 	cudaMalloc(&dGlobalCoordinatesX, sizeof(int) * V);
 	cudaMalloc(&dGlobalCoordinatesY, sizeof(int) * V);
