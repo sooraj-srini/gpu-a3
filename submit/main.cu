@@ -311,18 +311,18 @@ int main (int argc, char **argv) {
 	// 	// printf("old value %d \n", old[0]);
 	// 	if(old[0] == 0) break;
 	// 	else {
-	// 		int *tmp = oldPos;
-	// 		oldPos = newPos;
-	// 		newPos = tmp;
-	// 		cudaMemset(newPos, 0, sizeof(int));
-	// 		tmp = dRead;
-	// 		dRead = dWrite;
-	// 		dWrite = tmp;
+		// 		int *tmp = oldPos;
+		// 		oldPos = newPos;
+		// 		newPos = tmp;
+		// 		cudaMemset(newPos, 0, sizeof(int));
+		// 		tmp = dRead;
+		// 		dRead = dWrite;
+		// 		dWrite = tmp;
 	// 	}
 	// }
 	// printf("done i think\n");
 	// fflush(stdout);
-
+	
 	
 	// cudaFree(dUpdate);
 	// cudaFree(dRead);
@@ -375,40 +375,47 @@ int main (int argc, char **argv) {
 	sum[0] = 0;
 	for(int i=1; i<V; i++) sum[i] = sum[i-1] + hFrameSizeX[i-1]*hFrameSizeY[i-1];
 	// for(int i=0; i<V; i++) printf("%d ", sum[i]);
-	cudaMalloc(&dMesh, sizeof(int) * (sum[V-1] + hFrameSizeX[V-1]*hFrameSizeY[V-1]));
-	cudaMalloc(&dSum, sizeof(int) * V);
-
+	cudaStream_t stream1, stream2;
+cudaError_t result, result2;
+result = cudaStreamCreate(&stream1);
+result2 = cudaStreamCreate(&stream2);
+	cudaMallocAsync(&dMesh, sizeof(int) * (sum[V-1] + hFrameSizeX[V-1]*hFrameSizeY[V-1]), stream1);
+	cudaMallocAsync(&dSum, sizeof(int) * V, stream1);
+	
 	for(int i = 0; i < V; i++) {
 		int *arr;
 		// cudaMalloc(&arr, sizeof(int) * hFrameSizeX[i] * hFrameSizeY[i]);
-		cudaMemcpy(dMesh + sum[i], hMesh[i], sizeof(int) * hFrameSizeX[i] * hFrameSizeY[i], cudaMemcpyHostToDevice);
-		free(hMesh[i]);
+		if (i < V/2)
+		cudaMemcpyAsync(dMesh + sum[i], hMesh[i], sizeof(int) * hFrameSizeX[i] * hFrameSizeY[i], cudaMemcpyHostToDevice, stream1);
+		else 
+		cudaMemcpyAsync(dMesh + sum[i], hMesh[i], sizeof(int) * hFrameSizeX[i] * hFrameSizeY[i], cudaMemcpyHostToDevice, stream2);
+		// free(hMesh[i]);
 		// localMesh[i] = arr;
 	}
-	cudaMemcpy(dSum, sum, sizeof(int) * V, cudaMemcpyHostToDevice);
-	free(sum);
+	cudaMemcpyAsync(dSum, sum, sizeof(int) * V, cudaMemcpyHostToDevice, stream1);
+	// free(sum);
 	// cudaMemcpy(dMesh, localMesh, sizeof(int*) * V, cudaMemcpyHostToDevice);
 	// printf("surely dmesh worked??\n");
 	// fflush(stdout);
-	cudaMalloc(&dProps, sizeof(int) * V * 5);
+	cudaMallocAsync(&dProps, sizeof(int) * V * 5, stream2);
 	// cudaMalloc(&dGlobalCoordinatesX, sizeof(int) * V);
 	// cudaMalloc(&dGlobalCoordinatesY, sizeof(int) * V);
 	// cudaMalloc(&dFrameSizeX, sizeof(int) * V);
 	// cudaMalloc(&dFrameSizeY, sizeof(int) * V);
-	cudaMalloc(&dFinalPng, sizeof(int) * frameSizeX * frameSizeY);
-	cudaMalloc(&dOnTop, sizeof(int) * frameSizeX * frameSizeY);
-	cudaMemset(dFinalPng, 0, sizeof(int) * frameSizeX * frameSizeY);
-	cudaMemset(dOnTop, 0, sizeof(int) * frameSizeX * frameSizeY);
-	cudaMemcpy(dProps, hOpacity, sizeof(int) * V, cudaMemcpyHostToDevice);
-	free(hOpacity);
-	cudaMemcpy(dProps + V, hGlobalCoordinatesX, sizeof(int) * V, cudaMemcpyHostToDevice);
-	free(hGlobalCoordinatesX);
-	cudaMemcpy(dProps + 2*V, hGlobalCoordinatesY, sizeof(int) * V, cudaMemcpyHostToDevice);
-	free(hGlobalCoordinatesY);
-	cudaMemcpy(dProps + 3*V, hFrameSizeX, sizeof(int) * V, cudaMemcpyHostToDevice);
-	free(hFrameSizeX);
-	cudaMemcpy(dProps + 4*V, hFrameSizeY, sizeof(int) * V, cudaMemcpyHostToDevice);
-	free(hFrameSizeY);
+	cudaMallocAsync(&dFinalPng, sizeof(int) * frameSizeX * frameSizeY, stream1);
+	cudaMallocAsync(&dOnTop, sizeof(int) * frameSizeX * frameSizeY, stream1);
+	cudaMemsetAsync(dFinalPng, 0, sizeof(int) * frameSizeX * frameSizeY, stream1);
+	cudaMemsetAsync(dOnTop, 0, sizeof(int) * frameSizeX * frameSizeY, stream1);
+	cudaMemcpyAsync(dProps, hOpacity, sizeof(int) * V, cudaMemcpyHostToDevice, stream2);
+	// free(hOpacity);
+	cudaMemcpyAsync(dProps + V, hGlobalCoordinatesX, sizeof(int) * V, cudaMemcpyHostToDevice, stream2);
+	// free(hGlobalCoordinatesX);
+	cudaMemcpyAsync(dProps + 2*V, hGlobalCoordinatesY, sizeof(int) * V, cudaMemcpyHostToDevice, stream2);
+	// free(hGlobalCoordinatesY);
+	cudaMemcpyAsync(dProps + 3*V, hFrameSizeX, sizeof(int) * V, cudaMemcpyHostToDevice, stream2);
+	// free(hFrameSizeX);
+	cudaMemcpyAsync(dProps + 4*V, hFrameSizeY, sizeof(int) * V, cudaMemcpyHostToDevice, stream2);
+	// free(hFrameSizeY);
 	// free(hGlobalCoordinatesX);
 	// free(hGlobalCoordinatesY);
 	// printf("are we here yet??\n");
@@ -418,10 +425,12 @@ int main (int argc, char **argv) {
 	// 	moveMesh<<<dim3((V + 9)/10, 100, 1), dim3(100, 1, 1)>>>(dMesh, dCumTrans, dCumTrans + V, dOpacity, dGlobalCoordinatesX, dGlobalCoordinatesY, dFrameSizeX, dFrameSizeY, dFinalPng, dOnTop, V, frameSizeX, frameSizeY, i);
 	// }
 	// moveMesh<<<dim3(V, 100, 1), dim3(100, 1, 1)>>>(dMesh, dCumTrans, dCumTrans + V, dProps, dProps + V,dProps + 2*V, dProps + 3*V, dProps + 4*V, dFinalPng, dOnTop, V, frameSizeX, frameSizeY, 0);
-	moveMesh2<<<dim3(V, 100, 1), dim3(100, 1, 1)>>>(dMesh, dSum, dCumTrans, dCumTrans + V, dProps, dProps + V,dProps + 2*V, dProps + 3*V, dProps + 4*V, dFinalPng, dOnTop, V, frameSizeX, frameSizeY, 0);
+	cudaStreamSynchronize(stream2);
+	moveMesh2<<<dim3(V, 100, 1), dim3(100, 1, 1), 0, stream1>>>(dMesh, dSum, dCumTrans, dCumTrans + V, dProps, dProps + V,dProps + 2*V, dProps + 3*V, dProps + 4*V, dFinalPng, dOnTop, V, frameSizeX, frameSizeY, 0);
 // 	err = cudaGetLastError();
 // if (err != cudaSuccess) 
 //     printf("Error: %s\n", cudaGetErrorString(err));
+cudaStreamSynchronize(stream1);
 	cudaMemcpy(hFinalPng, dFinalPng, sizeof(int) * frameSizeX * frameSizeY, cudaMemcpyDeviceToHost);
 	// Do not change anything below this comment.
 	// Code ends here.
