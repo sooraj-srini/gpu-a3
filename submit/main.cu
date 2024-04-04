@@ -107,7 +107,7 @@ void processTransformations(int *dCsr, int *dOffset, int *dRead, int *dWrite, in
 }
 
 __global__
-void process1(int *dCsr, int *dOffset, int *dWork, int *counter, int *dCumTrans, int V, int E) {
+void process1(int *dCsr, int *dOffset, int *dWork, int *counter, volatile int *dCumTrans, int V, int E) {
 	int index = blockIdx.x*1024 + threadIdx.x;
 	
 	if(index < V && dWork[index] >= 0){
@@ -191,7 +191,7 @@ void moveMesh(int **dMesh, int *dActualTransUp, int *dActualTransRight, int *dOp
 	}
 }
 __global__
-void moveMesh2(int *dMesh, int *dSum, int *dActualTransUp, int *dActualTransRight, volatile int *dOpacity, int *dGlobalCoordinatesX, int *dGlobalCoordinatesY, int *dFrameSizeX, int *dFrameSizeY, int *dFinalPng, int *dOnTop, int V, int frameSizeX, int frameSizeY, int offset){
+void moveMesh2(int *dMesh, int *dSum, int *dActualTransUp, int *dActualTransRight, int *dOpacity, int *dGlobalCoordinatesX, int *dGlobalCoordinatesY, int *dFrameSizeX, int *dFrameSizeY, int *dFinalPng, volatile int *dOnTop, int V, int frameSizeX, int frameSizeY, int offset){
 	//moves the mesh some many places, considering the opacity of the individual elements as well
 	// printf("It laucnhed right??\n");
 	int vertex = blockIdx.x + offset * ((V + 9)/10);
@@ -340,12 +340,23 @@ int main (int argc, char **argv) {
 	cudaMemcpy(dWork, old, sizeof(int), cudaMemcpyHostToDevice);
 	
 	
+	for(int i=0; i<V; i++){
+		process1<<<(V+1023)/1024, 1024>>>(dCsr, dOffset, dWork, counter, dCumTrans, V, E);
+		cudaMemcpy(old, counter, sizeof(int), cudaMemcpyDeviceToHost);
+		// printf("old[1] = %d\n", old[0]);
+		if(old[0] == V) {
+			break;
+		}
+	}
+
+	// cudaMemcpy(cumTransUp, dCumTrans, sizeof(int)*V, cudaMemcpyDeviceToHost);
+	// cudaMemcpy(cumTransRight, dCumTrans + V, sizeof(int)*V, cudaMemcpyDeviceToHost);
+	
 	// for(int i=0; i<V; i++){
-	// 	process1<<<(V+1023)/1024, 1024>>>(dCsr, dOffset, dWork, counter, dCumTrans, V, E);
-	// 	cudaMemcpy(old, counter, sizeof(int), cudaMemcpyDeviceToHost);
-	// 	if(old[0] == V) break;
+	// 	printf("%d %d %d\n", i, cumTransUp[i] + hGlobalCoordinatesX[i], cumTransRight[i] + hGlobalCoordinatesY[i]);
 	// }
-	processn<<<(V+1023)/1024, 1024>>>(dCsr, dOffset, dWork, counter, dCumTrans, V, E);
+
+	// processn<<<(V+1023)/1024, 1024>>>(dCsr, dOffset, dWork, counter, dCumTrans, V, E);
 	cudaFree(dWork);
 	cudaFree(counter);
 	cudaFree(dCsr);
@@ -353,7 +364,8 @@ int main (int argc, char **argv) {
 	// cudaMemset(counter, 0, sizeof(int));
 	//now that we have the actual translations, we can move the meshes
 	
-	
+	// printf("this part is done right\n");
+	// fflush(stdout);
 	int *dOpacity, *dGlobalCoordinatesX, *dGlobalCoordinatesY, *dFrameSizeX, *dFrameSizeY, *dFinalPng, *dOnTop; 
 	// int **dMesh;
 	int *dMesh, *dSum;
