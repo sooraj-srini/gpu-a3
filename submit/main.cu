@@ -128,7 +128,7 @@ void process1(int *dCsr, int *dOffset, int *dWork, int *counter, volatile int *d
 }
 
 __global__
-void processn(int *dCsr, int *dOffset, volatile int *dWork, volatile int *counter, int *dCumTrans, int V, int E) {
+void processn(int *dCsr, int *dOffset, volatile int *dWork, volatile int *counter, volatile int *dCumTrans, int V, int E) {
 	int index = blockIdx.x*1024 + threadIdx.x;
 	
 	if(index < V){
@@ -284,23 +284,24 @@ int main (int argc, char **argv) {
 	int *dCumTrans, *dOffset, *dCsr;
 	int *dRead, *dWrite;
 	int *newPos, *oldPos;
+	cudaStream_t stream;
+cudaError_t res;
+res = cudaStreamCreate(&stream);
 	// cudaMalloc(&newPos, sizeof(int));
 	// cudaMalloc(&oldPos, sizeof(int));
-	cudaMalloc(&dCumTrans, sizeof(int) * 2* V);
+	cudaMallocAsync(&dCumTrans, sizeof(int) * 2* V, stream);
 	// cudaMalloc(&dCumTransRight, sizeof(int) * V);
 	// cudaMalloc(&dRead, sizeof(int) * V);
 	// cudaMalloc(&dWrite, sizeof(int) * V);
 	// cudaMalloc(&dUpdate, sizeof(bool) * V);
-	cudaMalloc(&dOffset, sizeof(int) * (V+1));
-	cudaMalloc(&dCsr, sizeof(int) * E);
-	cudaMemcpy(dCumTrans, cumTransUp, sizeof(int) * V, cudaMemcpyHostToDevice);
-	cudaMemcpy(dCumTrans  + V, cumTransRight, sizeof(int) * V, cudaMemcpyHostToDevice);
-	cudaMemcpy(dOffset, hOffset, sizeof(int) * (V+1), cudaMemcpyHostToDevice);
-	cudaMemcpy(dCsr, hCsr, sizeof(int) * E, cudaMemcpyHostToDevice);
+	cudaMallocAsync(&dOffset, sizeof(int) * (V+1), stream);
+	cudaMallocAsync(&dCsr, sizeof(int) * E, stream);
+	cudaMemcpyAsync(dCumTrans, cumTransUp, sizeof(int) * V, cudaMemcpyHostToDevice, stream);
+	cudaMemcpyAsync(dCumTrans  + V, cumTransRight, sizeof(int) * V, cudaMemcpyHostToDevice, stream);
+	cudaMemcpyAsync(dOffset, hOffset, sizeof(int) * (V+1), cudaMemcpyHostToDevice, stream);
+	cudaMemcpyAsync(dCsr, hCsr, sizeof(int) * E, cudaMemcpyHostToDevice, stream);
 	free(hOffset);
 	free(hCsr);
-	free(cumTransRight);
-	free(cumTransUp);
 	int old[1] = {1};
 	// cudaMemcpy(oldPos, old, sizeof(int), cudaMemcpyHostToDevice);
 	// for(int i=0; i<=V; i++) {
@@ -318,7 +319,7 @@ int main (int argc, char **argv) {
 		// 		tmp = dRead;
 		// 		dRead = dWrite;
 		// 		dWrite = tmp;
-	// 	}
+		// 	}
 	// }
 	// printf("done i think\n");
 	// fflush(stdout);
@@ -332,35 +333,36 @@ int main (int argc, char **argv) {
 	
 	
 	int *dWork, *counter;
-	cudaMalloc(&dWork, sizeof(int) * V);
-	cudaMalloc(&counter, sizeof(int));
-	cudaMemcpy(counter, old, sizeof(int), cudaMemcpyHostToDevice);
-	cudaMemset(dWork, -1, sizeof(int) * V);
+	cudaMallocAsync(&dWork, sizeof(int) * V, stream);
+	cudaMallocAsync(&counter, sizeof(int), stream);
+	cudaMemcpyAsync(counter, old, sizeof(int), cudaMemcpyHostToDevice, stream);
+	cudaMemsetAsync(dWork, -1, sizeof(int) * V, stream);
 	old [0] = 0;
-	cudaMemcpy(dWork, old, sizeof(int), cudaMemcpyHostToDevice);
+	cudaMemcpyAsync(dWork, old, sizeof(int), cudaMemcpyHostToDevice, stream);
 	
 	
-	for(int i=0; i<V; i++){
-		process1<<<(V+1023)/1024, 1024>>>(dCsr, dOffset, dWork, counter, dCumTrans, V, E);
-		cudaMemcpy(old, counter, sizeof(int), cudaMemcpyDeviceToHost);
-		// printf("old[1] = %d\n", old[0]);
-		if(old[0] == V) {
-			break;
-		}
-	}
-
+	// for(int i=0; i<V; i++){
+	// 	process1<<<(V+1023)/1024, 1024>>>(dCsr, dOffset, dWork, counter, dCumTrans, V, E);
+	// 	cudaMemcpy(old, counter, sizeof(int), cudaMemcpyDeviceToHost);
+	// 	// printf("old[1] = %d\n", old[0]);
+	// 	if(old[0] == V) {
+	// 		break;
+	// 	}
+	// }
+	
+	// free(cumTransRight);
+	// free(cumTransUp);
+	processn<<<(V+1023)/1024, 1024, 0, stream>>>(dCsr, dOffset, dWork, counter, dCumTrans, V, E);
 	// cudaMemcpy(cumTransUp, dCumTrans, sizeof(int)*V, cudaMemcpyDeviceToHost);
 	// cudaMemcpy(cumTransRight, dCumTrans + V, sizeof(int)*V, cudaMemcpyDeviceToHost);
 	
 	// for(int i=0; i<V; i++){
 	// 	printf("%d %d %d\n", i, cumTransUp[i] + hGlobalCoordinatesX[i], cumTransRight[i] + hGlobalCoordinatesY[i]);
 	// }
-
-	// processn<<<(V+1023)/1024, 1024>>>(dCsr, dOffset, dWork, counter, dCumTrans, V, E);
-	cudaFree(dWork);
-	cudaFree(counter);
-	cudaFree(dCsr);
-	cudaFree(dOffset);
+	cudaFreeAsync(dWork, stream);
+	cudaFreeAsync(counter, stream);
+	cudaFreeAsync(dCsr, stream);
+	cudaFreeAsync(dOffset, stream);
 	// cudaMemset(counter, 0, sizeof(int));
 	//now that we have the actual translations, we can move the meshes
 	
@@ -376,9 +378,9 @@ int main (int argc, char **argv) {
 	for(int i=1; i<V; i++) sum[i] = sum[i-1] + hFrameSizeX[i-1]*hFrameSizeY[i-1];
 	// for(int i=0; i<V; i++) printf("%d ", sum[i]);
 	cudaStream_t stream1, stream2;
-cudaError_t result, result2;
-result = cudaStreamCreate(&stream1);
-result2 = cudaStreamCreate(&stream2);
+	cudaError_t result, result2;
+	result = cudaStreamCreate(&stream1);
+	result2 = cudaStreamCreate(&stream2);
 	cudaMallocAsync(&dMesh, sizeof(int) * (sum[V-1] + hFrameSizeX[V-1]*hFrameSizeY[V-1]), stream1);
 	cudaMallocAsync(&dSum, sizeof(int) * V, stream1);
 	
@@ -422,13 +424,14 @@ result2 = cudaStreamCreate(&stream2);
 	// fflush(stdout);
 	// sleep(60);
 	// for(int i=0; i<10; i++){
-	// 	moveMesh<<<dim3((V + 9)/10, 100, 1), dim3(100, 1, 1)>>>(dMesh, dCumTrans, dCumTrans + V, dOpacity, dGlobalCoordinatesX, dGlobalCoordinatesY, dFrameSizeX, dFrameSizeY, dFinalPng, dOnTop, V, frameSizeX, frameSizeY, i);
-	// }
-	// moveMesh<<<dim3(V, 100, 1), dim3(100, 1, 1)>>>(dMesh, dCumTrans, dCumTrans + V, dProps, dProps + V,dProps + 2*V, dProps + 3*V, dProps + 4*V, dFinalPng, dOnTop, V, frameSizeX, frameSizeY, 0);
-	cudaStreamSynchronize(stream2);
-	moveMesh2<<<dim3(V, 100, 1), dim3(100, 1, 1), 0, stream1>>>(dMesh, dSum, dCumTrans, dCumTrans + V, dProps, dProps + V,dProps + 2*V, dProps + 3*V, dProps + 4*V, dFinalPng, dOnTop, V, frameSizeX, frameSizeY, 0);
-// 	err = cudaGetLastError();
-// if (err != cudaSuccess) 
+		// 	moveMesh<<<dim3((V + 9)/10, 100, 1), dim3(100, 1, 1)>>>(dMesh, dCumTrans, dCumTrans + V, dOpacity, dGlobalCoordinatesX, dGlobalCoordinatesY, dFrameSizeX, dFrameSizeY, dFinalPng, dOnTop, V, frameSizeX, frameSizeY, i);
+		// }
+		// moveMesh<<<dim3(V, 100, 1), dim3(100, 1, 1)>>>(dMesh, dCumTrans, dCumTrans + V, dProps, dProps + V,dProps + 2*V, dProps + 3*V, dProps + 4*V, dFinalPng, dOnTop, V, frameSizeX, frameSizeY, 0);
+		cudaStreamSynchronize(stream);
+		cudaStreamSynchronize(stream2);
+		moveMesh2<<<dim3(V, 100, 1), dim3(100, 1, 1), 0, stream1>>>(dMesh, dSum, dCumTrans, dCumTrans + V, dProps, dProps + V,dProps + 2*V, dProps + 3*V, dProps + 4*V, dFinalPng, dOnTop, V, frameSizeX, frameSizeY, 0);
+		// 	err = cudaGetLastError();
+		// if (err != cudaSuccess) 
 //     printf("Error: %s\n", cudaGetErrorString(err));
 cudaStreamSynchronize(stream1);
 	cudaMemcpy(hFinalPng, dFinalPng, sizeof(int) * frameSizeX * frameSizeY, cudaMemcpyDeviceToHost);
