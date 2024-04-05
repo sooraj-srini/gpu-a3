@@ -384,16 +384,20 @@ res = cudaStreamCreate(&stream);
 	cudaMallocAsync(&dMesh, sizeof(int) * (sum[V-1] + hFrameSizeX[V-1]*hFrameSizeY[V-1]), stream1);
 	cudaMallocAsync(&dSum, sizeof(int) * V, stream1);
 	
+	int *hBigMesh = (int *) malloc(sizeof(int) * (sum[V-1] + hFrameSizeX[V-1]*hFrameSizeY[V-1]));
+
 	for(int i = 0; i < V; i++) {
 		int *arr;
 		// cudaMalloc(&arr, sizeof(int) * hFrameSizeX[i] * hFrameSizeY[i]);
-		if (i < V/2)
-		cudaMemcpyAsync(dMesh + sum[i], hMesh[i], sizeof(int) * hFrameSizeX[i] * hFrameSizeY[i], cudaMemcpyHostToDevice, stream1);
-		else 
-		cudaMemcpyAsync(dMesh + sum[i], hMesh[i], sizeof(int) * hFrameSizeX[i] * hFrameSizeY[i], cudaMemcpyHostToDevice, stream2);
+		// if (i < V/2)
+		// cudaMemcpyAsync(dMesh + sum[i], hMesh[i], sizeof(int) * hFrameSizeX[i] * hFrameSizeY[i], cudaMemcpyHostToDevice, stream1);
+		// else 
+		// cudaMemcpyAsync(dMesh + sum[i], hMesh[i], sizeof(int) * hFrameSizeX[i] * hFrameSizeY[i], cudaMemcpyHostToDevice, stream2);
+		memcpy(hBigMesh + sum[i], hMesh[i], sizeof(int) * hFrameSizeX[i] * hFrameSizeY[i]);
 		// free(hMesh[i]);
 		// localMesh[i] = arr;
 	}
+	cudaMemcpyAsync(dMesh, hBigMesh, sizeof(int) * (sum[V-1] + hFrameSizeX[V-1]*hFrameSizeY[V-1]), cudaMemcpyHostToDevice, stream1);
 	cudaMemcpyAsync(dSum, sum, sizeof(int) * V, cudaMemcpyHostToDevice, stream1);
 	// free(sum);
 	// cudaMemcpy(dMesh, localMesh, sizeof(int*) * V, cudaMemcpyHostToDevice);
