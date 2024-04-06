@@ -222,6 +222,55 @@ void moveMesh2(int *dMesh, int *dSum, int *dActualTransUp, int *dActualTransRigh
 		}
 	}
 }
+__global__
+void moveMesh3(int *dMesh, int *dSum, int *dActualTransUp, int *dActualTransRight, int *dOpacity, int *dGlobalCoordinatesX, int *dGlobalCoordinatesY, int *dFrameSizeX, int *dFrameSizeY, volatile int *dFinalPng, volatile int *dOnTop, int V, int frameSizeX, int frameSizeY, int offset){
+	//moves the mesh some many places, considering the opacity of the individual elements as well
+	// printf("It laucnhed right??\n");
+	int tid = blockIdx.x * 1024 + threadIdx.x;
+	int vertex;
+	int left = 0, right = V ;
+	while(left < right){
+		int mid = (left + right) / 2;
+		if(dSum[mid]<= tid ){
+			if(mid == V-1 || dSum[mid + 1] > tid) {
+				break;
+			}
+			else if(dSum[mid + 1] <= tid) {
+				left = mid + 1;
+			}
+		} else {
+			right = mid;
+		}
+	}
+	vertex = (left + right)/2;
+	int off = tid - dSum[vertex];
+	int r = off / dFrameSizeY[vertex];
+	int c = off % dFrameSizeY[vertex];
+
+	if(vertex < V && r < dFrameSizeX[vertex] && c < dFrameSizeY[vertex]) {
+		int updatedX = dGlobalCoordinatesX[vertex] + r + dActualTransUp[vertex];
+		int updatedY = dGlobalCoordinatesY[vertex] + c + dActualTransRight[vertex];
+		
+		if (updatedX >= 0 && updatedX < frameSizeX && updatedY >= 0 && updatedY < frameSizeY) {
+			int index = updatedX * frameSizeY + updatedY;
+			int op = dOpacity[vertex];
+			bool done = false, updated = false;
+			do {
+				done = updated;
+				int old = dOnTop[index];
+				bool val =!(old >= 0 && old < op);
+				int ret = atomicCAS((int *)&dOnTop[index], old - INT_MAX*val, -1);
+				if(ret == old - INT_MAX*val) {
+					dFinalPng[index] = dMesh[dSum[vertex]  + r * dFrameSizeY[vertex] + c];
+					dOnTop[index] = op;
+					updated = true;
+				} 
+				__syncthreads();
+				updated = updated | (old >= op);
+			} while(!done);
+		}
+	}
+}
 
 void checkError(int i) {
 	cudaError_t err = cudaGetLastError();
@@ -381,6 +430,7 @@ res = cudaStreamCreate(&stream);
 	cudaError_t result, result2;
 	result = cudaStreamCreate(&stream1);
 	result2 = cudaStreamCreate(&stream2);
+	int total = (sum[V-1] + hFrameSizeX[V-1]*hFrameSizeY[V-1]);
 	cudaMallocAsync(&dMesh, sizeof(int) * (sum[V-1] + hFrameSizeX[V-1]*hFrameSizeY[V-1]), stream1);
 	cudaMallocAsync(&dSum, sizeof(int) * V, stream1);
 	
@@ -433,7 +483,8 @@ res = cudaStreamCreate(&stream);
 		// moveMesh<<<dim3(V, 100, 1), dim3(100, 1, 1)>>>(dMesh, dCumTrans, dCumTrans + V, dProps, dProps + V,dProps + 2*V, dProps + 3*V, dProps + 4*V, dFinalPng, dOnTop, V, frameSizeX, frameSizeY, 0);
 		cudaStreamSynchronize(stream);
 		cudaStreamSynchronize(stream2);
-		moveMesh2<<<dim3(V, 100, 1), dim3(100, 1, 1), 0, stream1>>>(dMesh, dSum, dCumTrans, dCumTrans + V, dProps, dProps + V,dProps + 2*V, dProps + 3*V, dProps + 4*V, dFinalPng, dOnTop, V, frameSizeX, frameSizeY, 0);
+		// moveMesh2<<<dim3(V, 100, 1), dim3(100, 1, 1), 0, stream1>>>(dMesh, dSum, dCumTrans, dCumTrans + V, dProps, dProps + V,dProps + 2*V, dProps + 3*V, dProps + 4*V, dFinalPng, dOnTop, V, frameSizeX, frameSizeY, 0);
+		moveMesh3<<<(total + 1023)/1024, 1024, 0, stream1>>>(dMesh, dSum, dCumTrans, dCumTrans + V, dProps, dProps + V,dProps + 2*V, dProps + 3*V, dProps + 4*V, dFinalPng, dOnTop, V, frameSizeX, frameSizeY, 0);
 		// 	err = cudaGetLastError();
 		// if (err != cudaSuccess) 
 //     printf("Error: %s\n", cudaGetErrorString(err));
