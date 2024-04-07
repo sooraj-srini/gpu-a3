@@ -152,8 +152,41 @@ void processn(int *dCsr, int *dOffset, volatile int *dWork, volatile int *counte
 				updated = true;
 			}
 			__syncthreads();
-		} while(!done);
-	
+		} while(!done);		
+	}
+}
+
+__global__
+void setParents(int *dParents, int *dCsr, int *dOffset, int V){
+	int vertex = blockIdx.x*1024 + threadIdx.x;
+	if(vertex < V) {
+		int start = dOffset[vertex];
+		int end = dOffset[vertex + 1];
+		for(int i=start; i < end; i++){
+			dParents[dCsr[i]] = vertex;
+			// printf("parent of csr i %d is %d\n", dCsr[i], vertex);
+		}
+	}
+}
+
+__global__
+void processParent(int *dParent, volatile int *dGrandParent, int *dCumTrans, volatile int *dFinalTrans, int V, int E){
+	int vertex = blockIdx.x * 1024 + threadIdx.x;
+	if (vertex < V){
+		int parent = dParent[vertex];
+		// if (vertex == 2)
+		// printf("parent of vertex %d is %d\n", vertex, parent);
+		if(parent >= 0){
+			// if (vertex == 2){
+			// // printf("total cum is %d %d\n", dFinalTrans[parent], dFinalTrans[parent + V]);
+			// // printf("current cum is %d %d\n", dCumTrans[parent], dCumTrans[parent + V]);
+			// }
+			dFinalTrans[vertex] += dCumTrans[parent];
+			dFinalTrans[vertex + V] += dCumTrans[parent + V];
+			dGrandParent[vertex] = dParent[parent];
+		} else {
+			dGrandParent[vertex] = -1;
+		}
 	}
 }
 
@@ -331,95 +364,120 @@ int main (int argc, char **argv) {
 		cumTransRight[x[0]] += x[2];
 	}
 	int *dCumTrans, *dOffset, *dCsr;
+	int *dFinalTrans;
 	int *dRead, *dWrite;
 	int *newPos, *oldPos;
 	// cudaMalloc(&newPos, sizeof(int));
 	// cudaMalloc(&oldPos, sizeof(int));
 	cudaMalloc(&dCumTrans, sizeof(int) * 2* V);
-	// cudaMalloc(&dCumTransRight, sizeof(int) * V);
+	cudaMalloc(&dFinalTrans, sizeof(int) * 2* V);
 	// cudaMalloc(&dRead, sizeof(int) * V);
 	// cudaMalloc(&dWrite, sizeof(int) * V);
 	// cudaMalloc(&dUpdate, sizeof(bool) * V);
-	cudaMalloc(&dOffset, sizeof(int) * (V+1));
-	cudaMalloc(&dCsr, sizeof(int) * E);
+	cudaMalloc(&dOffset, sizeof(int) * (V+1 + E));
+	// cudaMalloc(&dCsr, sizeof(int) * E);
+	dCsr = dOffset + V + 1;
 	cudaMemcpy(dCumTrans, cumTransUp, sizeof(int) * V, cudaMemcpyHostToDevice);
 	cudaMemcpy(dCumTrans  + V, cumTransRight, sizeof(int) * V, cudaMemcpyHostToDevice);
+	cudaMemcpy(dFinalTrans, dCumTrans, sizeof(int) * 2* V, cudaMemcpyDeviceToDevice);
+	cudaMemcpy(dFinalTrans  + V, cumTransRight, sizeof(int) * V, cudaMemcpyHostToDevice);
 	cudaMemcpy(dOffset, hOffset, sizeof(int) * (V+1), cudaMemcpyHostToDevice);
 	cudaMemcpy(dCsr, hCsr, sizeof(int) * E, cudaMemcpyHostToDevice);
-	free(hOffset);
-	free(hCsr);
 	int old[1] = {1};
-	// cudaMemcpy(oldPos, old, sizeof(int), cudaMemcpyHostToDevice);
-	// for(int i=0; i<=V; i++) {
-	// 	// printf("i %d\n", i);
-	// 	processTransformations<<<(V+1023)/1024, 1024>>>(dCsr, dOffset, dRead, dWrite, oldPos, newPos, dCumTrans, V, E);
-	// 	// int old[1];
-	// 	cudaMemcpy(old, newPos, sizeof(int), cudaMemcpyDeviceToHost);
-	// 	// printf("old value %d \n", old[0]);
-	// 	if(old[0] == 0) break;
-	// 	else {
-		// 		int *tmp = oldPos;
-		// 		oldPos = newPos;
-		// 		newPos = tmp;
-		// 		cudaMemset(newPos, 0, sizeof(int));
-		// 		tmp = dRead;
-		// 		dRead = dWrite;
-		// 		dWrite = tmp;
-		// 	}
-	// }
-	// printf("done i think\n");
-	// fflush(stdout);
 	
-	
-	// cudaFree(dUpdate);
-	// cudaFree(dRead);
-	// cudaFree(dWrite);
-	// cudaFree(oldPos);
-	// cudaFree(newPos);
-	
-	
-	int *dWork, *counter;
-	cudaMalloc(&dWork, sizeof(int) * V);
-	cudaMalloc(&counter, sizeof(int));
-	cudaMemcpy(counter, old, sizeof(int), cudaMemcpyHostToDevice);
-	cudaMemset(dWork, -1, sizeof(int) * V);
-	old [0] = 0;
-	cudaMemcpy(dWork, old, sizeof(int), cudaMemcpyHostToDevice);
-	
-	
-	// for(int i=0; i<V; i++){
-	// 	process1<<<(V+1023)/1024, 1024>>>(dCsr, dOffset, dWork, counter, dCumTrans, V, E);
-	// 	cudaMemcpy(old, counter, sizeof(int), cudaMemcpyDeviceToHost);
-	// 	// printf("old[1] = %d\n", old[0]);
-	// 	if(old[0] == V) {
-	// 		break;
-	// 	}
-	// }
-	
+	int *dParent;
+	cudaMalloc(&dParent, sizeof(int)*V);
+	setParents<<<(V + 1023)/1024, 1024>>>(dParent, dCsr, dOffset, V);
+	// free(hOffset);
+	// free(hCsr);
 	// free(cumTransRight);
 	// free(cumTransUp);
-	processn<<<(V+1023)/1024, 1024>>>(dCsr, dOffset, dWork, counter, dCumTrans, V, E);
+	int *dGrandParent = dOffset;
+	old[0] = -1;
+	cudaMemcpy(dParent, old, sizeof(int), cudaMemcpyHostToDevice);
+	int log_2_x = 32 - __builtin_clz(V) - 1;
+	for(int i=0; i<log_2_x + 1; i++){
+		processParent<<<(V+1023)/1024, 1024>>>(dParent, dGrandParent, dCumTrans, dFinalTrans, V, E);
+		// cudaDeviceSynchronize();
+		// printf("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAaa\n");
+		cudaMemcpy(dCumTrans,  dFinalTrans,sizeof(int) * 2* V, cudaMemcpyDeviceToDevice);
+		int *tmp = dParent;
+		dParent = dGrandParent;
+		dGrandParent = tmp;
+	}
+	dCumTrans = dFinalTrans;
+	
+	// cudaMemcpy(oldPos, old, sizeof(int), cudaMemcpyHostToDevice);
+	// for(int i=0; i<=V; i++) {
+		// 	// printf("i %d\n", i);
+		// 	processTransformations<<<(V+1023)/1024, 1024>>>(dCsr, dOffset, dRead, dWrite, oldPos, newPos, dCumTrans, V, E);
+		// 	// int old[1];
+		// 	cudaMemcpy(old, newPos, sizeof(int), cudaMemcpyDeviceToHost);
+		// 	// printf("old value %d \n", old[0]);
+		// 	if(old[0] == 0) break;
+		// 	else {
+			// 		int *tmp = oldPos;
+			// 		oldPos = newPos;
+			// 		newPos = tmp;
+			// 		cudaMemset(newPos, 0, sizeof(int));
+			// 		tmp = dRead;
+			// 		dRead = dWrite;
+			// 		dWrite = tmp;
+			// 	}
+			// }
+			// printf("done i think\n");
+			// fflush(stdout);
+			
+			
+			// cudaFree(dUpdate);
+			// cudaFree(dRead);
+			// cudaFree(dWrite);
+			// cudaFree(oldPos);
+			// cudaFree(newPos);
+			
+			
+			// int *dWork, *counter;
+			// cudaMalloc(&dWork, sizeof(int) * V);
+			// cudaMalloc(&counter, sizeof(int));
+			// cudaMemcpy(counter, old, sizeof(int), cudaMemcpyHostToDevice);
+			// cudaMemset(dWork, -1, sizeof(int) * V);
+			// old [0] = 0;
+			// cudaMemcpy(dWork, old, sizeof(int), cudaMemcpyHostToDevice);
+	
+			
+			// for(int i=0; i<V; i++){
+		// 	process1<<<(V+1023)/1024, 1024>>>(dCsr, dOffset, dWork, counter, dCumTrans, V, E);
+		// 	cudaMemcpy(old, counter, sizeof(int), cudaMemcpyDeviceToHost);
+		// 	// printf("old[1] = %d\n", old[0]);
+		// 	if(old[0] == V) {
+			// 		break;
+			// 	}
+			// }
+	
+			// free(cumTransRight);
+			// free(cumTransUp);
+	// processn<<<(V+1023)/1024, 1024>>>(dCsr, dOffset, dWork, counter, dCumTrans, V, E);
 	// cudaMemcpy(cumTransUp, dCumTrans, sizeof(int)*V, cudaMemcpyDeviceToHost);
 	// cudaMemcpy(cumTransRight, dCumTrans + V, sizeof(int)*V, cudaMemcpyDeviceToHost);
 	
 	// for(int i=0; i<V; i++){
-	// 	printf("%d %d %d\n", i, cumTransUp[i] + hGlobalCoordinatesX[i], cumTransRight[i] + hGlobalCoordinatesY[i]);
-	// }
-	// cudaFree(dWork);
-	// cudaFree(counter);
-	// cudaFree(dCsr);
-	// cudaFree(dOffset);
-	// cudaMemset(counter, 0, sizeof(int));
-	//now that we have the actual translations, we can move the meshes
-	
-	// printf("this part is done right\n");
-	// fflush(stdout);
-	int *dOpacity, *dGlobalCoordinatesX, *dGlobalCoordinatesY, *dFrameSizeX, *dFrameSizeY, *dFinalPng, *dOnTop; 
-	// int **dMesh;
-	int *dMesh, *dSum;
-	int *dProps;
-	// int **localMesh = (int **) malloc(sizeof(int*)*V);
-	int *sum = (int*) malloc(sizeof(int)*V);
+		// 	printf("%d %d %d\n", i, cumTransUp[i] + hGlobalCoordinatesX[i], cumTransRight[i] + hGlobalCoordinatesY[i]);
+		// }
+		// cudaFree(dWork);
+		// cudaFree(counter);
+		// cudaFree(dCsr);
+		// cudaFree(dOffset);
+		// cudaMemset(counter, 0, sizeof(int));
+		//now that we have the actual translations, we can move the meshes
+		
+		// printf("this part is done right\n");
+		// fflush(stdout);
+		int *dOpacity, *dGlobalCoordinatesX, *dGlobalCoordinatesY, *dFrameSizeX, *dFrameSizeY, *dFinalPng, *dOnTop; 
+		// int **dMesh;
+		int *dMesh, *dSum;
+		int *dProps;
+		// int **localMesh = (int **) malloc(sizeof(int*)*V);
+		int *sum = (int*) malloc(sizeof(int)*V);
 	sum[0] = 0;
 	for(int i=1; i<V; i++) sum[i] = sum[i-1] + hFrameSizeX[i-1]*hFrameSizeY[i-1];
 	// for(int i=0; i<V; i++) printf("%d ", sum[i]);
@@ -428,9 +486,9 @@ int main (int argc, char **argv) {
 	cudaMalloc(&dSum, sizeof(int) * V);
 	
 	int *hBigMesh = (int *) malloc(sizeof(int) * (sum[V-1] + hFrameSizeX[V-1]*hFrameSizeY[V-1]));
-
+	
 	for(int i = 0; i < V; i++) {
-		int *arr;
+		// int *arr;
 		// cudaMalloc(&arr, sizeof(int) * hFrameSizeX[i] * hFrameSizeY[i]);
 		// if (i < V/2)
 		// cudaMemcpy(dMesh + sum[i], hMesh[i], sizeof(int) * hFrameSizeX[i] * hFrameSizeY[i], cudaMemcpyHostToDevice1);
@@ -443,6 +501,7 @@ int main (int argc, char **argv) {
 	cudaMemcpy(dMesh, hBigMesh, sizeof(int) * (sum[V-1] + hFrameSizeX[V-1]*hFrameSizeY[V-1]), cudaMemcpyHostToDevice);
 	cudaMemcpy(dSum, sum, sizeof(int) * V, cudaMemcpyHostToDevice);
 	// free(sum);
+	// free(hBigMesh);
 	// cudaMemcpy(dMesh, localMesh, sizeof(int*) * V, cudaMemcpyHostToDevice);
 	// printf("surely dmesh worked??\n");
 	// fflush(stdout);
